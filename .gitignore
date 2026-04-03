@@ -1,0 +1,5 @@
+node_modules/
+.env
+server_output.log
+server.log
+temp_token.txt
