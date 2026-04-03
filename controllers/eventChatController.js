@@ -359,18 +359,50 @@ exports.markRead = async (req, res) => {
 
 exports.getMyRooms = async (req, res) => {
   try {
+    if (!req.user?._id) return res.status(401).json({ message: 'Not authorized' });
+
     const matches = await Match.find({
       $or: [{ requester: req.user._id }, { receiver: req.user._id }],
-      status: 'accepted'
+      status: 'accepted',
     }).populate('requester receiver', 'name profilePhoto vibeTag');
 
-    const rooms = await Promise.all(matches.map(async (m) => {
-      const last = await ChatMessage.findOne({ roomId: m.chatRoomId }).sort({ createdAt: -1 });
-      const other = m.requester._id.toString() === req.user._id.toString() ? m.receiver : m.requester;
-      return { roomId: m.chatRoomId, matchId: m._id, other, lastMessage: last };
-    }));
-    res.json({ rooms });
+    const rooms = await Promise.all(
+      matches
+        .filter(m => m.chatRoomId && m.requester && m.receiver) // skip broken matches
+        .map(async (m) => {
+          try {
+            const myId = req.user._id.toString();
+            const other =
+              m.requester._id.toString() === myId ? m.receiver : m.requester;
+
+            const [last, unread] = await Promise.all([
+              ChatMessage.findOne({ roomId: m.chatRoomId })
+                .sort({ createdAt: -1 })
+                .select('content type createdAt sender'),
+              ChatMessage.countDocuments({
+                roomId: m.chatRoomId,
+                sender: { $ne: req.user._id },
+                readBy: { $ne: req.user._id },
+              }),
+            ]);
+
+            return {
+              roomId: m.chatRoomId,
+              matchId: m._id,
+              other,
+              lastMessage: last || null,
+              unreadCount: unread || 0,
+            };
+          } catch (innerErr) {
+            console.error(`getMyRooms: failed processing match ${m._id}:`, innerErr.message);
+            return null;
+          }
+        })
+    );
+
+    res.json({ rooms: rooms.filter(Boolean) }); // strip any nulls from failed matches
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    console.error('getMyRooms error:', err.message, err.stack);
+    res.status(500).json({ message: 'Failed to load chat rooms. Please try again.' });
   }
 };
