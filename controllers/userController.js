@@ -4,6 +4,42 @@ const { Report, Review, Match } = require('../models/index');
 
 const NLP_URL = process.env.NLP_SERVICE_URL || 'http://localhost:8002';
 
+exports.searchUsers = async (req, res) => {
+  try {
+    const { q } = req.query;
+    if (!q || q.trim().length < 2)
+      return res.status(400).json({ message: 'Query must be at least 2 characters' });
+
+    const me = req.user;
+    const existingMatches = await Match.find({
+      $or: [{ requester: me._id }, { receiver: me._id }],
+    });
+    const excludeIds = [
+      me._id,
+      ...me.blockedUsers,
+      ...existingMatches.flatMap(m => [m.requester.toString(), m.receiver.toString()]),
+    ];
+
+    const users = await User.find({
+      _id: { $nin: excludeIds },
+      isPhoneVerified: true,
+      isActive: true,
+      $or: [
+        { name:    { $regex: q.trim(), $options: 'i' } },
+        { vibeTag: { $regex: q.trim(), $options: 'i' } },
+        { 'location.city': { $regex: q.trim(), $options: 'i' } },
+        { interests: { $elemMatch: { $regex: q.trim(), $options: 'i' } } },
+      ],
+    })
+      .select('name age profilePhoto vibeTag interests location safetyScore isIdVerified isFaceVerified')
+      .limit(20);
+
+    res.json({ users });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
 exports.updateProfile = async (req, res) => {
   try {
     const allowed = ['name', 'age', 'gender', 'bio', 'profilePhoto', 'interests', 'vibeTag', 'availability', 'location', 'safetyContacts'];

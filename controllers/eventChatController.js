@@ -88,18 +88,69 @@ exports.deleteEvent = async (req, res) => {
 // CHAT CONTROLLER
 // ═══════════════════════════════════════════
 
+// ── SHARED AUTH: companion room OR event room ────────────
+const authorizeRoom = async (userId, roomId) => {
+  // 1. Companion chat room
+  const match = await Match.findOne({
+    chatRoomId: roomId,
+    $or: [{ requester: userId }, { receiver: userId }],
+    status: 'accepted',
+  });
+  if (match) return { ok: true, type: 'companion', ref: match };
+
+  // 2. Event chat room (roomId format: event_<eventId>)
+  if (roomId.startsWith('event_')) {
+    const eventId = roomId.replace('event_', '');
+    const { Event } = require('../models/index');
+    const event = await Event.findById(eventId);
+    if (!event) return { ok: false };
+    const isMember =
+      event.creator.toString() === userId.toString() ||
+      event.participants.some(p => p.toString() === userId.toString());
+    if (isMember) return { ok: true, type: 'event', ref: event };
+  }
+  return { ok: false };
+};
+
+// ── GET EVENT CHAT ROOM ───────────────────────────────────
+exports.getEventChat = async (req, res) => {
+  try {
+    const { Event } = require('../models/index');
+    const event = await Event.findById(req.params.id)
+      .populate('creator participants', 'name profilePhoto vibeTag');
+    if (!event) return res.status(404).json({ message: 'Event not found' });
+
+    const userId = req.user._id.toString();
+    const isMember =
+      event.creator._id.toString() === userId ||
+      event.participants.some(p => p._id.toString() === userId);
+    if (!isMember) return res.status(403).json({ message: 'Join the event to access chat' });
+
+    const roomId = `event_${event._id}`;
+    const messages = await ChatMessage.find({ roomId })
+      .populate('sender', 'name profilePhoto')
+      .sort({ createdAt: 1 })
+      .limit(100);
+
+    await ChatMessage.updateMany(
+      { roomId, sender: { $ne: req.user._id }, readBy: { $ne: req.user._id } },
+      { $addToSet: { readBy: req.user._id } }
+    );
+
+    res.json({ roomId, event, messages, participants: [event.creator, ...event.participants] });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
 // ── SEND MESSAGE WITH MODERATION + SENTIMENT ─────────────
 exports.sendMessage = async (req, res) => {
   try {
     const { roomId, content } = req.body;
     if (!roomId || !content) return res.status(400).json({ message: 'roomId and content are required' });
 
-    const match = await Match.findOne({
-      chatRoomId: roomId,
-      $or: [{ requester: req.user._id }, { receiver: req.user._id }],
-      status: 'accepted'
-    });
-    if (!match) return res.status(403).json({ message: 'Access denied' });
+    const auth = await authorizeRoom(req.user._id, roomId);
+    if (!auth.ok) return res.status(403).json({ message: 'Access denied' });
 
     // Run moderation + sentiment in parallel
     let moderation = { flagged: false, action: 'allow' };
@@ -136,12 +187,8 @@ exports.sendMessage = async (req, res) => {
 exports.getChatHistory = async (req, res) => {
   try {
     const { roomId } = req.params;
-    const match = await Match.findOne({
-      chatRoomId: roomId,
-      $or: [{ requester: req.user._id }, { receiver: req.user._id }],
-      status: 'accepted'
-    });
-    if (!match) return res.status(403).json({ message: 'Access denied' });
+    const auth = await authorizeRoom(req.user._id, roomId);
+    if (!auth.ok) return res.status(403).json({ message: 'Access denied' });
 
     const messages = await ChatMessage.find({ roomId })
       .populate('sender', 'name profilePhoto')
@@ -166,12 +213,8 @@ exports.sendVoiceMessage = async (req, res) => {
     const { roomId, voiceData, duration } = req.body;
     if (!roomId || !voiceData) return res.status(400).json({ message: 'roomId and voiceData are required' });
 
-    const match = await Match.findOne({
-      chatRoomId: roomId,
-      $or: [{ requester: req.user._id }, { receiver: req.user._id }],
-      status: 'accepted'
-    });
-    if (!match) return res.status(403).json({ message: 'Access denied' });
+    const auth = await authorizeRoom(req.user._id, roomId);
+    if (!auth.ok) return res.status(403).json({ message: 'Access denied' });
 
     const msg = await ChatMessage.create({
       roomId, sender: req.user._id,

@@ -1,12 +1,13 @@
 const express = require('express');
 const router = express.Router();
 const { protect } = require('../middleware/auth');
-const { createEvent, getEvents, joinEvent, getMyEvents, deleteEvent } = require('../controllers/eventChatController');
+const { createEvent, getEvents, joinEvent, getMyEvents, deleteEvent, getEventChat } = require('../controllers/eventChatController');
 
 router.get('/', protect, getEvents);
 router.post('/', protect, createEvent);
 router.get('/mine', protect, getMyEvents);
 router.post('/:id/join', protect, joinEvent);
+router.get('/:id/chat', protect, getEventChat);
 router.put('/:id', protect, async (req, res) => {
   try {
     const { Event } = require('../models/index');
