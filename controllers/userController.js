@@ -11,27 +11,18 @@ exports.searchUsers = async (req, res) => {
       return res.status(400).json({ message: 'Query must be at least 2 characters' });
 
     const me = req.user;
-    const existingMatches = await Match.find({
-      $or: [{ requester: me._id }, { receiver: me._id }],
-    });
-    const excludeIds = [
-      me._id,
-      ...me.blockedUsers,
-      ...existingMatches.flatMap(m => [m.requester.toString(), m.receiver.toString()]),
-    ];
 
     const users = await User.find({
-      _id: { $nin: excludeIds },
-      isPhoneVerified: true,
+      _id: { $ne: me._id, $nin: me.blockedUsers },
       isActive: true,
       $or: [
-        { name:    { $regex: q.trim(), $options: 'i' } },
-        { vibeTag: { $regex: q.trim(), $options: 'i' } },
+        { name:            { $regex: q.trim(), $options: 'i' } },
+        { vibeTag:         { $regex: q.trim(), $options: 'i' } },
         { 'location.city': { $regex: q.trim(), $options: 'i' } },
-        { interests: { $elemMatch: { $regex: q.trim(), $options: 'i' } } },
+        { interests:       { $elemMatch: { $regex: q.trim(), $options: 'i' } } },
       ],
     })
-      .select('name age profilePhoto vibeTag interests location safetyScore isIdVerified isFaceVerified')
+      .select('name age profilePhoto vibeTag interests location safetyScore isIdVerified isFaceVerified isPhoneVerified')
       .limit(20);
 
     res.json({ users });
