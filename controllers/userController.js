@@ -118,9 +118,17 @@ exports.rateUser = async (req, res) => {
       await Review.create({ reviewer: req.user._id, reviewee: userId, matchId, rating, review: review || '', tags: tags || [] });
     }
 
-    // Adjust safety score
+    // Adjust safety score — clamped to [0, 100] atomically
     const delta = rating >= 4 ? 2 : rating <= 2 ? -5 : 0;
-    if (delta !== 0) await User.findByIdAndUpdate(userId, { $inc: { safetyScore: delta } });
+    if (delta !== 0) {
+      await User.findByIdAndUpdate(userId, [{
+        $set: {
+          safetyScore: {
+            $min: [100, { $max: [0, { $add: ['$safetyScore', delta] }] }]
+          }
+        }
+      }]);
+    }
 
     res.json({ message: 'Review submitted' });
   } catch (err) {
@@ -166,8 +174,14 @@ exports.reportUser = async (req, res) => {
     await Report.create({ reporter: req.user._id, reported: reportedId, reason, description });
     // Auto-block
     await User.findByIdAndUpdate(req.user._id, { $addToSet: { blockedUsers: reportedId } });
-    // Decrease safety score of reported user
-    await User.findByIdAndUpdate(reportedId, { $inc: { safetyScore: -10 } });
+    // Decrease safety score of reported user — clamped to [0, 100]
+    await User.findByIdAndUpdate(reportedId, [{
+      $set: {
+        safetyScore: {
+          $min: [100, { $max: [0, { $add: ['$safetyScore', -10] }] }]
+        }
+      }
+    }]);
     res.json({ message: 'Report submitted. User blocked.' });
   } catch (err) {
     res.status(500).json({ message: err.message });

@@ -43,7 +43,7 @@ const UserSchema = new mongoose.Schema({
     phone: String,
     email: String
   }],
-  safetyScore: { type: Number, default: 100 },
+  safetyScore: { type: Number, default: 100, min: 0, max: 100 },
   blockedUsers: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
   isActive: { type: Boolean, default: true },
   role: { type: String, enum: ['user', 'admin'], default: 'user' }
