@@ -265,6 +265,50 @@ exports.verifyFace = async (req, res) => {
   }
 };
 
+// ── FORGOT PASSWORD ──────────────────────────────────────
+exports.forgotPassword = async (req, res) => {
+  try {
+    const { email } = req.body;
+    if (!email) return res.status(400).json({ message: 'Email is required' });
+    const user = await User.findOne({ email: email.toLowerCase() });
+    if (!user) return res.status(404).json({ message: 'No account found with this email.' });
+
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+    user.otpCode = otp;
+    user.otpExpiry = new Date(Date.now() + 10 * 60 * 1000);
+    await user.save();
+
+    await sendOtpEmail(user.email, otp, user.name);
+    res.json({ message: 'Password reset OTP sent to your email.' });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+// ── RESET PASSWORD ────────────────────────────────────────
+exports.resetPassword = async (req, res) => {
+  try {
+    const { email, otp, newPassword } = req.body;
+    if (!email || !otp || !newPassword)
+      return res.status(400).json({ message: 'Email, OTP and new password are required' });
+    if (newPassword.length < 8)
+      return res.status(400).json({ message: 'Password must be at least 8 characters' });
+
+    const user = await User.findOne({ email: email.toLowerCase() });
+    if (!user || user.otpCode !== otp || Date.now() > new Date(user.otpExpiry).getTime())
+      return res.status(400).json({ message: 'Invalid or expired OTP' });
+
+    user.passwordHash = await bcrypt.hash(newPassword, 12);
+    user.otpCode = undefined;
+    user.otpExpiry = undefined;
+    await user.save();
+
+    res.json({ message: 'Password reset successfully. You can now login.' });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
 // ── ME ────────────────────────────────────────────────────
 exports.getMe = async (req, res) => {
   res.json({ user: sanitize(req.user) });
