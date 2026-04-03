@@ -313,3 +313,24 @@ exports.resetPassword = async (req, res) => {
 exports.getMe = async (req, res) => {
   res.json({ user: sanitize(req.user) });
 };
+
+// ── SET ADMIN (internal use — secured by email whitelist) ─
+exports.setAdmin = async (req, res) => {
+  try {
+    const ADMIN_EMAILS = ['soumyabisoi10@gmail.com', 'sreyanjethy.1201@gmail.com'];
+    const { email, secret } = req.body;
+    if (secret !== process.env.ADMIN_SECRET)
+      return res.status(403).json({ message: 'Forbidden' });
+    if (!ADMIN_EMAILS.includes(email?.toLowerCase()))
+      return res.status(403).json({ message: 'Not an admin email' });
+    const user = await User.findOneAndUpdate(
+      { email: email.toLowerCase() },
+      { role: 'admin' },
+      { new: true }
+    );
+    if (!user) return res.status(404).json({ message: 'User not found' });
+    res.json({ message: `${user.name} is now admin`, role: user.role });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};

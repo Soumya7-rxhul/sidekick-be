@@ -14,5 +14,6 @@ router.post('/reset-password', ctrl.resetPassword);
 router.post('/verify-id', protect, ctrl.verifyGovId);
 router.post('/verify-face', protect, ctrl.verifyFace);
 router.get('/me', protect, ctrl.getMe);
+router.post('/set-admin', ctrl.setAdmin);
 
 module.exports = router;
