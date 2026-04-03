@@ -161,6 +161,81 @@ exports.getEventChat = async (req, res) => {
   }
 };
 
+// ── ICEBREAKER ─────────────────────────────────────────
+const ICEBREAKER_TEMPLATES = {
+  music:       ['What artist are you obsessed with lately?', 'Favourite song to play on a long drive?', 'Concert you wish you could attend?'],
+  movies:      ['Last movie that genuinely surprised you?', 'Comfort film you can rewatch forever?', 'Favourite director of all time?'],
+  food:        ["Best dish you've cooked recently?", 'Go-to spot when you\'re craving something good?', 'Street food or fine dining?'],
+  sports:      ['Which sport do you actually play vs just watch?', 'Favourite match moment you witnessed live?', 'Morning workout or evening session?'],
+  travel:      ['Next destination on your list?', 'Most underrated place you\'ve visited?', 'Mountains or beaches?'],
+  gaming:      ['Current game you can\'t put down?', 'PC, console, or mobile?', 'Favourite game of all time?'],
+  cafe:        ['Go-to coffee order?', 'Work-from-cafe or just vibes?', 'Best cafe you\'ve discovered recently?'],
+  drive:       ['Ideal night drive route?', 'Playlist for a long drive?', 'Windows down or AC on?'],
+  study:       ['What are you currently learning?', 'Best study spot you know?', 'Pomodoro or marathon sessions?'],
+  hangout:     ['Ideal weekend plan?', 'Indoor hangout or outdoor adventure?', 'Last spontaneous thing you did?'],
+  nightwalk:   ['Favourite time to go for a walk?', 'Best neighbourhood to explore at night?', 'Earphones in or just the city sounds?'],
+  fitness:     ['Current workout routine?', 'Gym or outdoor training?', 'Favourite cheat meal after a workout?'],
+  photography: ['Film or digital?', 'Best photo you\'ve taken recently?', 'Favourite subject to shoot?'],
+  concert:     ['Last live show you attended?', 'Dream artist to see live?', 'Front row or back with a good view?'],
+  festival:    ['Best festival experience you\'ve had?', 'Local hidden gem festival?', 'Food stalls or main stage?'],
+  shopping:    ['Thrift store finds or brand new?', 'Online or in-store shopping?', 'Last thing you bought that made you happy?'],
+  default:     ['What\'s been the highlight of your week?', 'Something you\'re looking forward to?', 'Best thing about your city?'],
+};
+
+const localIcebreaker = (userA, userB, category) => {
+  const common = (userA?.interests || []).filter(i =>
+    (userB?.interests || []).map(x => x.toLowerCase()).includes(i.toLowerCase())
+  );
+  const topic = common[0]?.toLowerCase() || category?.toLowerCase() || 'default';
+  const pool = ICEBREAKER_TEMPLATES[topic] || ICEBREAKER_TEMPLATES.default;
+  const prompts = [...pool].sort(() => Math.random() - 0.5).slice(0, 3);
+  if (userA?.city && userB?.city && userA.city.toLowerCase() === userB.city.toLowerCase()) {
+    prompts[prompts.length - 1] = `Know any hidden gems in ${userA.city}?`;
+  }
+  return prompts;
+};
+
+exports.getIcebreaker = async (req, res) => {
+  try {
+    const { roomId } = req.params;
+    const auth = await authorizeRoom(req.user._id, roomId);
+    if (!auth.ok) return res.status(403).json({ message: 'Access denied' });
+
+    const msgCount = await ChatMessage.countDocuments({ roomId });
+    if (msgCount >= 3) return res.json({ prompts: [] });
+
+    let userA = null, userB = null, category = null;
+    if (auth.type === 'companion') {
+      const match = auth.ref;
+      [userA, userB] = await Promise.all([
+        User.findById(match.requester).select('name interests vibeTag location'),
+        User.findById(match.receiver).select('name interests vibeTag location'),
+      ]);
+    } else {
+      category = auth.ref.category;
+      userA = await User.findById(req.user._id).select('name interests vibeTag location');
+    }
+
+    const payload = {
+      userA: { name: userA?.name, interests: userA?.interests, vibeTag: userA?.vibeTag, city: userA?.location?.city },
+      userB: userB ? { name: userB?.name, interests: userB?.interests, vibeTag: userB?.vibeTag, city: userB?.location?.city } : null,
+      context: { source: auth.type, category },
+    };
+
+    let prompts;
+    try {
+      const { data } = await axios.post(`${NLP_URL}/icebreaker`, payload, { timeout: 3000 });
+      prompts = data.prompts;
+    } catch {
+      prompts = localIcebreaker(payload.userA, payload.userB, category);
+    }
+
+    res.json({ prompts });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
 // ── SEND MESSAGE WITH MODERATION + SENTIMENT ─────────────
 exports.sendMessage = async (req, res) => {
   try {
