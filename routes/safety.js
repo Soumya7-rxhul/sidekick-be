@@ -19,7 +19,7 @@ router.get('/contacts', protect, async (req, res) => {
 // ── ADD SAFETY CONTACT ────────────────────────────────────
 router.post('/contacts', protect, async (req, res) => {
   try {
-    const { name, phone } = req.body;
+    const { name, phone, email } = req.body;
     if (!name || !name.trim()) return res.status(400).json({ message: 'Contact name is required' });
     if (!phone || !phone.trim()) return res.status(400).json({ message: 'Contact phone is required' });
 
@@ -31,7 +31,10 @@ router.post('/contacts', protect, async (req, res) => {
     const duplicate = user.safetyContacts.some(c => c.phone === phoneClean);
     if (duplicate) return res.status(400).json({ message: 'This phone number is already in your Safety Circle' });
 
-    user.safetyContacts.push({ name: name.trim(), phone: phoneClean });
+    const newContact = { name: name.trim(), phone: phoneClean };
+    if (email && email.trim()) newContact.email = email.trim().toLowerCase();
+
+    user.safetyContacts.push(newContact);
     await user.save();
 
     res.status(201).json({ message: 'Contact added successfully', contacts: user.safetyContacts });

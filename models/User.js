@@ -40,7 +40,8 @@ const UserSchema = new mongoose.Schema({
   // Safety
   safetyContacts: [{
     name: String,
-    phone: String
+    phone: String,
+    email: String
   }],
   safetyScore: { type: Number, default: 100 },
   blockedUsers: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
