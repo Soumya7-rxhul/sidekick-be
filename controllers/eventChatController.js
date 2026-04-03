@@ -6,7 +6,7 @@ const { sendEventJoinedEmail, sendEventJoinConfirmEmail } = require('../utils/em
 const NLP_URL = process.env.NLP_SERVICE_URL || 'http://localhost:8002';
 
 // ═══════════════════════════════════════════
-// EVENT CONTROLLER
+// EVENT CONTROLLER  v2
 // ═══════════════════════════════════════════
 
 exports.createEvent = async (req, res) => {
