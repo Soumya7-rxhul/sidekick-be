@@ -143,6 +143,27 @@ router.post('/sos', protect, async (req, res) => {
   }
 });
 
+// ── SOS DEBUG (remove after fixing) ────────────────────────
+router.get('/sos-debug', protect, async (req, res) => {
+  const gmailUser = process.env.GMAIL_USER;
+  const gmailPass = process.env.GMAIL_PASS;
+  const status = {
+    GMAIL_USER_set: !!gmailUser,
+    GMAIL_USER_value: gmailUser ? `${gmailUser.slice(0,3)}***@${gmailUser.split('@')[1] || '?'}` : 'NOT SET',
+    GMAIL_PASS_set: !!gmailPass,
+    GMAIL_PASS_length: gmailPass ? gmailPass.length : 0,
+    GMAIL_PASS_has_spaces: gmailPass ? gmailPass.includes(' ') : false,
+  };
+  // Try a real SMTP verify
+  try {
+    await transporter.verify();
+    status.smtp_verify = 'SUCCESS - credentials are valid';
+  } catch (err) {
+    status.smtp_verify = `FAILED - ${err.message}`;
+  }
+  res.json(status);
+});
+
 // ── ICEBREAKER ────────────────────────────────────────────
 router.post('/icebreaker', protect, async (req, res) => {
   try {
