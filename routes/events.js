@@ -6,8 +6,8 @@ const { createEvent, getEvents, joinEvent, getMyEvents, deleteEvent, getEventCha
 router.get('/', protect, getEvents);
 router.post('/', protect, createEvent);
 router.get('/mine', protect, getMyEvents);
-router.post('/:id/join', protect, joinEvent);
 router.get('/:id/chat', protect, getEventChat);
+router.post('/:id/join', protect, joinEvent);
 router.put('/:id', protect, async (req, res) => {
   try {
     const { Event } = require('../models/index');
