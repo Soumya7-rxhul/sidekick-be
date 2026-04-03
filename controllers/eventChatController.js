@@ -39,22 +39,40 @@ exports.getEvents = async (req, res) => {
 exports.joinEvent = async (req, res) => {
   try {
     const event = await Event.findById(req.params.id).populate('creator', 'email name');
-    if (!event || !event.isOpen) return res.status(404).json({ message: 'Event not found or closed' });
-    if (event.participants.includes(req.user._id)) {
+    if (!event) return res.status(404).json({ message: 'Event not found' });
+    if (!event.isOpen || event.participants.length >= event.maxParticipants)
+      return res.status(400).json({ message: 'Event is full' });
+    if (event.participants.some(p => p.toString() === req.user._id.toString()))
       return res.status(400).json({ message: 'Already joined' });
-    }
-    event.participants.push(req.user._id);
-    if (event.participants.length >= event.maxParticipants) event.isOpen = false;
-    await event.save();
 
-    // Email to joiner
-    sendEventJoinConfirmEmail(req.user.email, req.user.name, event.title, event.date, event.location?.city);
-    // Email to creator
-    if (event.creator._id.toString() !== req.user._id.toString()) {
-      sendEventJoinedEmail(event.creator.email, event.creator.name, req.user.name, event.title);
+    // Atomic update — increment only if under cap, prevents race condition
+    const updated = await Event.findOneAndUpdate(
+      {
+        _id: event._id,
+        isOpen: true,
+        $expr: { $lt: [{ $size: '$participants' }, '$maxParticipants'] },
+        participants: { $ne: req.user._id },
+      },
+      {
+        $push: { participants: req.user._id },
+      },
+      { new: true }
+    ).populate('creator', 'email name');
+
+    if (!updated)
+      return res.status(400).json({ message: 'Event is full or already joined' });
+
+    // Close event if now at capacity
+    if (updated.participants.length >= updated.maxParticipants) {
+      updated.isOpen = false;
+      await updated.save();
     }
 
-    res.json({ event });
+    sendEventJoinConfirmEmail(req.user.email, req.user.name, updated.title, updated.date, updated.location?.city);
+    if (updated.creator._id.toString() !== req.user._id.toString())
+      sendEventJoinedEmail(updated.creator.email, updated.creator.name, req.user.name, updated.title);
+
+    res.json({ event: updated });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
